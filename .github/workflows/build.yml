@@ -1,0 +1,56 @@
+name: build
+
+on: push
+
+env:
+  COMMIT: ${{ github.sha }}
+  DOCKER_REGISTRY: ghcr.io
+  DOCKER_NAME: ghcr.io/${{ github.repository }}
+  PUSH_DOCKER_IMAGE: true
+
+jobs:
+  Build-Docker-Image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v2
+
+      - name: Use branch name as Docker tag
+        if: startsWith(github.ref, 'refs/heads')
+        run: |
+          echo "Using branch name as docker tag"
+          echo "DOCKER_TAG=$(echo ${{ github.ref }} | sed -e "s|refs/heads/||g" | sed -e "s|/|.|g")" >> $GITHUB_ENV
+      - name: Use 'latest' as Docker tag
+        if: github.ref == 'refs/heads/master'
+        run: |
+          echo "Using latest as docker tag"
+          echo "DOCKER_TAG=latest" >> $GITHUB_ENV
+      - name: Use tag name as Docker tag
+        if: startsWith(github.ref, 'refs/tags')
+        run: |
+          echo "Using git tag as docker tag"
+          echo "DOCKER_TAG=$(echo ${{ github.ref }} | sed -e "s|refs/tags/||g")" >> $GITHUB_ENV
+
+      - name: "Docker: Set up QEMU"
+        uses: docker/setup-qemu-action@v1
+
+      - name: "Docker: Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v1
+
+      - name: "Docker: Login to Container Registry"
+        uses: docker/login-action@v1
+        if: env.PUSH_DOCKER_IMAGE == 'true'
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ env.DOCKER_REGISTRY }}
+
+      - name: "Docker: Build and push to Container Registry"
+        uses: docker/build-push-action@v2
+        if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+        with:
+          tags: |
+            ${{ env.DOCKER_NAME }}:latest
+            ${{ env.DOCKER_NAME }}:${{ env.DOCKER_TAG }}
+          push: ${{ env.PUSH_DOCKER_IMAGE }}
